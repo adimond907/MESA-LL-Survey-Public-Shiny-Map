@@ -1,0 +1,10 @@
+library(RODBC)
+
+# Establish connection using the DSN you created
+# Replace 'your_username' and 'your_password' with your actual credentials
+my_conn <- odbcConnect(dsn = "AKFIN", uid = "ADIMOND", pwd = "Jackietimkatie#1227")
+
+
+gen <- sqlQuery(my_conn,"select * from afsc.genetic_bsai_salmon_bycatch")
+
+psc <- sqlQuery(my_conn,"select * from council.comprehensive_psc where YEAR > 2001")

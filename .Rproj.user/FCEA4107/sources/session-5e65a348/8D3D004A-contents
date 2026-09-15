@@ -1,0 +1,173 @@
+library(shiny)
+library(shinydashboard)
+library(leaflet)
+library(dplyr)
+library(here)
+
+setwd(here())
+station_cpue <- read.csv("data/station_cpue.csv")
+
+# --- UI SIDE ---
+ui <- dashboardPage(
+  dashboardHeader(title = "Fisheries Station Explorer"),
+  
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Station Map", tabName = "maps_tab", icon = icon("map")),
+      menuItem("Data Export", tabName = "export_tab", icon = icon("download"))
+    )
+  ),
+  
+  dashboardBody(
+    tabItems(
+      # Tab 1: Map View
+      tabItem(tabName = "maps_tab",
+              fluidRow(
+                box(title = "Map Controls", width = 4, status = "primary", solidHeader = TRUE,
+                    selectInput("species","Select Species:",
+                                choices=unique(station_cpue$Species),
+                                selected=c("Sablefish")),
+                    
+                    # Year Selector
+                    selectInput("map_year", "Select Year:", 
+                                choices = unique(station_cpue$Year), 
+                                selected = max(station_cpue$Year)),
+                    
+                    
+                    # Metric Selector (Maps to column names)
+                    selectInput("map_metric", "Select Metric to Display:",
+                                choices = c("Total Catch" = "TotalCatch",
+                                            "Mean Length (cm)" = "MeanLength",
+                                            "Mean Weight (kg)" = "MeanWeight"),
+                                selected = "TotalCatch")
+                ),
+                
+                box(title = "Station Map", width = 8, status = "success", solidHeader = TRUE,
+                    leafletOutput("station_map", height = "600px")
+                )
+              )
+      ),
+      
+      # Tab 2: Export View
+      tabItem(tabName = "export_tab",
+              fluidRow(
+                box(title = "Query Options", width = 4, status = "primary", solidHeader = TRUE,
+                    checkboxGroupInput("exp_years", "Select Years:", 
+                                       choices = unique(station_cpue$Year), 
+                                       selected = max(station_cpue$Year)),
+                    radioButtons("exp_agg", "Aggregation Level:", 
+                                 choices = c("Station" = "station", "Region/Area" = "region")),
+                    radioButtons("exp_metric", "Output Metrics:", 
+                                 choices = c("Catch Numbers" = "TotalCatch", "Length Frequency" = "MeanLength")),
+                    br(),
+                    downloadButton("download_data", "Export Data (CSV)", class = "btn-block btn-success")
+                ),
+                box(title = "Data Preview", width = 8, status = "success", solidHeader = TRUE,
+                    tableOutput("preview_table")
+                )
+              )
+      )
+    )
+  )
+)
+
+# --- SERVER SIDE ---
+server <- function(input, output, session) {
+  
+  # 1. Filter data based on Map selections
+  filtered_map_data <- reactive({
+    station_cpue %>%
+      filter(Year == as.numeric(input$map_year),
+             Species==input$species) %>%
+      # Ensure the selected metric doesn't have NAs for mapping
+      filter(!is.na(.data[[input$map_metric]]))
+  })
+  
+  # 2. Render Base Map
+  output$station_map <- renderLeaflet({
+    leaflet() %>%
+      # Swapping addTiles() for a custom provider theme
+      addProviderTiles(providers$Esri.OceanBasemap) %>% 
+      fitBounds(min(station_cpue$Longitude), min(station_cpue$Latitude),
+                max(station_cpue$Longitude), max(station_cpue$Latitude))
+  })
+  
+  # 3. Use an observer to update dots and legend dynamically
+  observe({
+    data <- filtered_map_data()
+    metric_name <- input$map_metric
+    metric_values <- data[[metric_name]]
+    
+    # Create a color palette that adapts to the chosen column range
+    pal <- colorNumeric(palette = "YlOrRd", domain = metric_values)
+    
+    leafletProxy("station_map", data = data) %>%
+      clearMarkers() %>%
+      clearControls() %>% # Clears old legends
+      addCircleMarkers(
+        lng = ~Longitude, 
+        lat = ~Latitude,
+        radius = 8,
+        color = "#333333", # Dot border color
+        weight = 1,
+        fillColor = ~pal(metric_values),
+        fillOpacity = 0.8,
+        # Pop-up text displaying station details on click
+        popup = ~paste0("<strong>Station:</strong> ", Station, "<br>",
+                        "<strong>Area:</strong> ", Area, "<br>",
+                        "<strong>", metric_name, ":</strong> ", round(metric_values, 2))
+      ) %>%
+
+      addLegend(
+        pal = pal, 
+        values = metric_values, 
+        title = metric_name, 
+        position = "bottomright"
+      )
+  })
+  
+
+  filtered_export_data <- reactive({
+    req(input$exp_years)
+    
+    df <- station_cpue %>% filter(Year %in% input$exp_years)
+    
+    if (input$exp_agg == "region") {
+
+      df <- df %>%
+        group_by(Year, Survey, Area_ID, Area, Species, species_code) %>%
+        summarise(
+          TotalCatch = sum(TotalCatch, na.rm = TRUE),
+          MeanLength = mean(MeanLength, na.rm = TRUE),
+          MeanWeight = mean(MeanWeight, na.rm = TRUE),
+          .groups = 'drop'
+        )
+    }
+    
+
+    if (input$exp_metric == "TotalCatch") {
+      df <- df %>% select(-MeanLength, -MeanWeight)
+    } else {
+      df <- df %>% select(-TotalCatch)
+    }
+    
+    return(df)
+  })
+  
+
+  output$preview_table <- renderTable({
+    head(filtered_export_data(), 10)
+  })
+  
+
+  output$download_data <- downloadHandler(
+    filename = function() {
+      paste0("fisheries_query_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      write.csv(filtered_export_data(), file, row.names = FALSE)
+    }
+  )
+}
+
+shinyApp(ui, server)
