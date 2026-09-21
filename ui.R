@@ -1,5 +1,5 @@
 ui <- dashboardPage(
-  dashboardHeader(title = "Fisheries Station Explorer"),
+  dashboardHeader(title = "NOAA AFSC Longline Survey"),
   
   dashboardSidebar(
     sidebarMenu(
@@ -18,7 +18,7 @@ ui <- dashboardPage(
             title = "Map Controls", width = 4, status = "primary", solidHeader = TRUE,
             radioButtons(
               "map_viz_type", "Visualization Mode:",
-              choices = c("Station Markers" = "stations", "Region Choropleth" = "regions"),
+              choices = c("Station Markers" = "stations", "Region" = "regions"),
               selected = "stations"
             ),
             hr(),
@@ -53,19 +53,26 @@ ui <- dashboardPage(
         fluidRow(
           box(
             title = "Query Options", width = 4, status = "primary", solidHeader = TRUE,
+            
+            # --- SINGLE SPECIES SELECTOR ---
+            selectInput(
+              "exp_species", "Select Species:",
+              choices = unique(station_cpue$Species),
+              selected = "Sablefish",
+              multiple = FALSE
+            ),
+            
             checkboxGroupInput(
               "exp_years", "Select Years:", 
               choices = unique(station_cpue$Year), 
               selected = max(station_cpue$Year)
             ),
+            
             radioButtons(
               "exp_agg", "Aggregation Level:", 
               choices = c("Station" = "station", "Region/Area" = "region")
             ),
-            radioButtons(
-              "exp_metric", "Output Metrics:", 
-              choices = c("Catch Numbers" = "TotalCatch", "Length Frequency" = "MeanLength")
-            ),
+            
             br(),
             downloadButton("download_data", "Export Data (CSV)", class = "btn-block btn-success")
           ),

@@ -137,10 +137,15 @@ server <- function(input, output, session) {
     }
   })
   
-  # --- 4. EXPORT HANDLER (WITH STATION COUNT INCLUDED) ---
+  # --- 4. EXPORT HANDLER ---
   filtered_export_data <- reactive({
-    req(input$exp_years)
-    df <- station_cpue %>% filter(Year %in% input$exp_years)
+    req(input$exp_years, input$exp_species)
+    
+    df <- station_cpue %>% 
+      filter(
+        Year %in% input$exp_years,
+        Species == input$exp_species
+      )
     
     if (input$exp_agg == "region") {
       df <- df %>%
@@ -152,12 +157,6 @@ server <- function(input, output, session) {
           MeanWeight = mean(MeanWeight, na.rm = TRUE),
           .groups = 'drop'
         )
-    }
-    
-    if (input$exp_metric == "TotalCatch") {
-      df <- df %>% select(-any_of(c("MeanLength", "MeanWeight")))
-    } else {
-      df <- df %>% select(-any_of("TotalCatch"))
     }
     
     return(df)

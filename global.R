@@ -66,13 +66,19 @@ ui <- dashboardPage(
       tabItem(tabName = "export_tab",
               fluidRow(
                 box(title = "Query Options", width = 4, status = "primary", solidHeader = TRUE,
+                    
+                    # --- NEW: Species Selector ---
+                    selectInput("exp_species", "Select Species:",
+                                choices = unique(station_cpue$Species),
+                                selected = "Sablefish"),
+                    
                     checkboxGroupInput("exp_years", "Select Years:", 
                                        choices = unique(station_cpue$Year), 
                                        selected = max(station_cpue$Year)),
                     radioButtons("exp_agg", "Aggregation Level:", 
                                  choices = c("Station" = "station", "Region/Area" = "region")),
                     radioButtons("exp_metric", "Output Metrics:", 
-                                 choices = c("Catch Numbers" = "TotalCatch", "Length Frequency" = "MeanLength")),
+                                 choices = c("Catch Numbers" = "TotalCatch", "Mean Length" = "MeanLength")),
                     br(),
                     downloadButton("download_data", "Export Data (CSV)", class = "btn-block btn-success")
                 ),
