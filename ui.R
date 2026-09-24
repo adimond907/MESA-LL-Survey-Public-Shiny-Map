@@ -1,7 +1,26 @@
 ui <- dashboardPage(
-  dashboardHeader(title = "NOAA AFSC Longline Survey"),
+  dashboardHeader(
+    title = "NOAA AFSC Longline Survey Data Portal", 
+    titleWidth = 480,
+    
+    # --- CUSTOM NOAA LOGO AT TOP RIGHT ---
+    tags$li(
+      class = "dropdown",
+      tags$a(
+        href = "https://www.noaa.gov/", 
+        target = "_blank",
+        style = "padding: 5px 15px 5px 5px; background-color: transparent !important;",
+        tags$img(
+          src = "noaa_logo.png", 
+          height = "40px", 
+          alt = "NOAA Logo"
+        )
+      )
+    )
+  ),
   
   dashboardSidebar(
+    width = 480,
     sidebarMenu(
       menuItem("Station Map", tabName = "maps_tab", icon = icon("map")),
       menuItem("Data Export", tabName = "export_tab", icon = icon("download"))
@@ -9,6 +28,40 @@ ui <- dashboardPage(
   ),
   
   dashboardBody(
+    # --- DOM MANIPULATION & CSS ---
+    tags$head(
+      tags$script(HTML("
+        $(document).ready(function() {
+          // Prepend the hamburger icon element directly into the logo element
+          $('.sidebar-toggle').prependTo('.main-header .logo');
+        });
+      ")),
+      tags$style(HTML("
+        /* Style the moved toggle inside the logo */
+        .main-header .logo .sidebar-toggle {
+          float: left !important;
+          padding: 0 12px 0 0 !important;
+          line-height: 50px !important;
+          color: #ffffff !important;
+          background-color: transparent !important;
+        }
+        .main-header .logo .sidebar-toggle:hover {
+          background-color: rgba(0, 0, 0, 0.1) !important;
+        }
+        /* Ensure the title text aligns horizontally next to the toggle icon */
+        .main-header .logo {
+          text-align: left !important;
+          padding-left: 15px !important;
+          display: flex !important;
+          align-items: center !important;
+        }
+        /* Style the right-hand header navbar item container */
+        .main-header .navbar-custom-menu {
+          float: right !important;
+        }
+      "))
+    ),
+    
     tabItems(
       # Tab 1: Map View
       tabItem(
@@ -54,7 +107,6 @@ ui <- dashboardPage(
           box(
             title = "Query Options", width = 4, status = "primary", solidHeader = TRUE,
             
-            # --- SINGLE SPECIES SELECTOR ---
             selectInput(
               "exp_species", "Select Species:",
               choices = unique(station_cpue$Species),
