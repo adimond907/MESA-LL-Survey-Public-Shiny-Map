@@ -2,47 +2,42 @@ server <- function(input, output, session) {
   
   # --- 0. DYNAMIC UI DROPDOWN UPDATE ---
   observeEvent(input$map_viz_type, {
-    current_selected <- input$map_metric
-    
     if (input$map_viz_type == "regions") {
-      new_choices <- c(
-        "Average Catch / Station" = "TotalCatch",
-        "Mean Length (cm)" = "MeanLength",
-        "Mean Weight (kg)" = "MeanWeight"
-      )
+      new_choices <- c("CPUE" = "CPUE")
+      selected_val <- "CPUE"
     } else {
       new_choices <- c(
         "Catch" = "TotalCatch",
         "Mean Length (cm)" = "MeanLength",
         "Mean Weight (kg)" = "MeanWeight"
       )
+      selected_val <- "TotalCatch"
     }
     
     updateSelectInput(
       session, 
       "map_metric", 
       choices = new_choices, 
-      selected = current_selected
+      selected = selected_val
     )
   })
   
   # --- 1. REACTIVE FILTERING FOR MAP ---
   filtered_map_data <- reactive({
+    req(input$map_year, input$species, input$map_metric)
+    
     station_cpue %>%
       filter(Year == as.numeric(input$map_year), Species == input$species) %>%
       filter(!is.na(.data[[input$map_metric]]))
   })
   
   region_map_data <- reactive({
-    agg_df <- station_cpue %>%
-      filter(Year == as.numeric(input$map_year), Species == input$species) %>%
-      group_by(Area) %>%
-      summarise(
-        AvgCatchPerStation = mean(TotalCatch, na.rm = TRUE),
-        MeanLength = mean(MeanLength, na.rm = TRUE),
-        MeanWeight = mean(MeanWeight, na.rm = TRUE),
-        StationCount = n(),
-        .groups = "drop"
+    req(input$map_year, input$species)
+    
+    agg_df <- area_cpue %>%
+      filter(
+        year == as.numeric(input$map_year), 
+        species == input$species
       )
     
     regions_sf %>%
@@ -51,12 +46,20 @@ server <- function(input, output, session) {
   
   # --- 2. BASE LEAFLET MAP ---
   output$station_map <- renderLeaflet({
-    leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
-      addProviderTiles(providers$Esri.OceanBasemap) %>% 
-      fitBounds(
-        min(station_cpue$Longitude, na.rm = TRUE), min(station_cpue$Latitude, na.rm = TRUE),
-        max(station_cpue$Longitude, na.rm = TRUE), max(station_cpue$Latitude, na.rm = TRUE)
+    valid_lng <- station_cpue$Longitude[!is.na(station_cpue$Longitude)]
+    valid_lat <- station_cpue$Latitude[!is.na(station_cpue$Latitude)]
+    
+    map <- leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
+      addProviderTiles(providers$Esri.OceanBasemap)
+    
+    if (length(valid_lng) > 0 && length(valid_lat) > 0) {
+      map <- map %>% fitBounds(
+        min(valid_lng), min(valid_lat),
+        max(valid_lng), max(valid_lat)
       )
+    }
+    
+    map
   })
   
   # --- 3. DYNAMIC LEAFLET PROXY OBSERVER ---
@@ -64,14 +67,19 @@ server <- function(input, output, session) {
     proxy <- leafletProxy("station_map")
     proxy %>% clearMarkers() %>% clearShapes() %>% clearControls()
     
-    metric_name <- input$map_metric
+    req(input$map_metric)
     
     if (input$map_viz_type == "stations") {
+      # --- STATION MARKERS MODE ---
       data <- filtered_map_data()
       req(nrow(data) > 0)
       
+      metric_name <- input$map_metric
       metric_values <- data[[metric_name]]
-      pal <- colorNumeric(palette = "YlOrRd", domain = metric_values)
+      valid_values <- metric_values[!is.na(metric_values)]
+      req(length(valid_values) > 0)
+      
+      pal <- colorNumeric(palette = "YlOrRd", domain = valid_values)
       
       proxy %>%
         addCircleMarkers(
@@ -85,55 +93,56 @@ server <- function(input, output, session) {
           fillOpacity = 0.85,
           popup = ~paste0("<strong>Station:</strong> ", Station, "<br>",
                           "<strong>Area:</strong> ", Area, "<br>",
-                          "<strong>Catch / Value:</strong> ", round(metric_values, 2))
+                          "<strong>Value:</strong> ", round(metric_values, 2))
         ) %>%
         addLegend(
           pal = pal, 
-          values = metric_values, 
+          values = valid_values, 
           title = ifelse(metric_name == "TotalCatch", "Catch", metric_name), 
           position = "bottomright"
         )
       
     } else {
+      # --- REGION CHOROPLETH MODE (CPUE ONLY) ---
       sf_data <- region_map_data()
       req(nrow(sf_data) > 0)
       
-      if (metric_name == "TotalCatch") {
-        plot_col <- "AvgCatchPerStation"
-        legend_label <- "Avg Catch / Station"
-      } else if (metric_name == "MeanLength") {
-        plot_col <- "MeanLength"
-        legend_label <- "Mean Length (cm)"
+      metric_values <- sf_data[["CPUE"]]
+      valid_values <- metric_values[!is.na(metric_values)]
+      
+      if (length(valid_values) == 0) {
+        proxy %>%
+          addPolygons(
+            data = sf_data,
+            color = "#222222",
+            weight = 2,
+            fillColor = "#CCCCCC",
+            fillOpacity = 0.4,
+            popup = ~paste0("<strong>Region:</strong> ", Area, "<br>No CPUE data available")
+          )
       } else {
-        plot_col <- "MeanWeight"
-        legend_label <- "Mean Weight (kg)"
+        pal <- colorNumeric(palette = "YlOrRd", domain = valid_values, na.color = "#CCCCCC")
+        
+        proxy %>%
+          addPolygons(
+            data = sf_data,
+            color = "#222222",
+            weight = 2,
+            fillColor = ~pal(metric_values),
+            fillOpacity = 0.65,
+            highlightOptions = highlightOptions(
+              weight = 3, color = "#000000", fillOpacity = 0.85, bringToFront = TRUE
+            ),
+            popup = ~paste0("<strong>Region:</strong> ", Area, "<br>",
+                            "<strong>CPUE:</strong> ", ifelse(is.na(CPUE), "N/A", round(CPUE, 2)))
+          ) %>%
+          addLegend(
+            pal = pal, 
+            values = valid_values, 
+            title = "CPUE", 
+            position = "bottomright"
+          )
       }
-      
-      metric_values <- sf_data[[plot_col]]
-      pal <- colorNumeric(palette = "YlOrRd", domain = metric_values, na.color = "#CCCCCC")
-      
-      proxy %>%
-        addPolygons(
-          data = sf_data,
-          color = "#222222",
-          weight = 2,
-          fillColor = ~pal(metric_values),
-          fillOpacity = 0.65,
-          highlightOptions = highlightOptions(
-            weight = 3, color = "#000000", fillOpacity = 0.85, bringToFront = TRUE
-          ),
-          popup = ~paste0("<strong>Region:</strong> ", Area, "<br>",
-                          "<strong>Stations Surveyed:</strong> ", ifelse(is.na(StationCount), 0, StationCount), "<br>",
-                          "<strong>Average Catch / Station:</strong> ", ifelse(is.na(AvgCatchPerStation), "N/A", round(AvgCatchPerStation, 2)), "<br>",
-                          "<strong>Mean Length (cm):</strong> ", ifelse(is.na(MeanLength), "N/A", round(MeanLength, 2)), "<br>",
-                          "<strong>Mean Weight (kg):</strong> ", ifelse(is.na(MeanWeight), "N/A", round(MeanWeight, 2)))
-        ) %>%
-        addLegend(
-          pal = pal, 
-          values = metric_values, 
-          title = legend_label, 
-          position = "bottomright"
-        )
     }
   })
   
@@ -159,6 +168,7 @@ server <- function(input, output, session) {
         )
     }
     
+    df <- df %>% select(-any_of("X"))
     return(df)
   })
   

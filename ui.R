@@ -82,7 +82,7 @@ ui <- dashboardPage(
             ),
             selectInput(
               "map_year", "Select Year:", 
-              choices = unique(station_cpue$Year), 
+              choices = sort(unique(station_cpue$Year), decreasing = TRUE), 
               selected = max(station_cpue$Year)
             ),
             selectInput(
@@ -116,7 +116,7 @@ ui <- dashboardPage(
             
             checkboxGroupInput(
               "exp_years", "Select Years:", 
-              choices = unique(station_cpue$Year), 
+              choices = sort(unique(station_cpue$Year), decreasing = TRUE), 
               selected = max(station_cpue$Year)
             ),
             
