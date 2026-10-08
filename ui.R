@@ -59,6 +59,17 @@ ui <- dashboardPage(
         .main-header .navbar-custom-menu {
           float: right !important;
         }
+        
+        /* TWO-COLUMN LAYOUT FOR EXP_YEARS CHECKBOXES */
+        #exp_years .shiny-options-group {
+          display: flex;
+          flex-wrap: wrap;
+        }
+        #exp_years .shiny-options-group .checkbox {
+          width: 50%;
+          margin-top: 5px;
+          margin-bottom: 5px;
+        }
       "))
     ),
     
@@ -69,12 +80,6 @@ ui <- dashboardPage(
         fluidRow(
           box(
             title = "Map Controls", width = 4, status = "primary", solidHeader = TRUE,
-            radioButtons(
-              "map_viz_type", "Visualization Mode:",
-              choices = c("Station Markers" = "stations", "Region" = "regions"),
-              selected = "stations"
-            ),
-            hr(),
             selectInput(
               "species", "Select Species:",
               choices = unique(station_cpue$Species),
@@ -118,11 +123,6 @@ ui <- dashboardPage(
               "exp_years", "Select Years:", 
               choices = sort(unique(station_cpue$Year), decreasing = TRUE), 
               selected = max(station_cpue$Year)
-            ),
-            
-            radioButtons(
-              "exp_agg", "Aggregation Level:", 
-              choices = c("Station" = "station", "Region/Area" = "region")
             ),
             
             br(),
